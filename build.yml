@@ -1,0 +1,80 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checks out your 4 files
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Installs the Java (JDK) needed for building
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3. Sets up the Gradle build tool
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # 4. === This is the magic part ===
+      - name: Create missing project files
+        run: |
+          # Create the main build.gradle.kts
+          echo '
+          plugins {
+              id("com.android.application") version "8.2.0" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.0" apply false
+          }
+          ' > build.gradle.kts
+          
+          # Create the main settings.gradle.kts
+          echo '
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "MusicPlayerApp"
+          include(":app")
+          ' > settings.gradle.kts
+          
+          # Modify your AndroidManifest.xml to remove dependencies
+          sed -i '/android:icon/d' app/src/main/AndroidManifest.xml
+          sed -i '/android:roundIcon/d' app/src/main/AndroidManifest.xml
+          
+          # UPDATED: We change the theme to a basic one
+          sed -i 's/@style\/Theme.MaterialComponents.DayNight.NoActionBar/@android:style\/Theme.DeviceDefault.NoActionBar/' app/src/main/AndroidManifest.xml
+          
+          # UPDATED: Change the App Label
+          sed -i 's/@string\/app_name/Music Player UI/' app/src/main/AndroidManifest.xml
+          
+          echo "Project files created and manifest patched."
+
+      # 5. Runs the build command to create the APK
+      - name: Build debug APK
+        # We add a property to enable viewBinding for the build
+        run: gradle :app:assembleDebug -Pandroid.defaults.buildfeatures.viewbinding=true
+
+      # 6. Uploads the finished APK
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: music-player-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
